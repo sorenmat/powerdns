@@ -65,7 +65,7 @@ func (c *pdnsclient) AddZone(name string, nameServers []string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New(fmt.Sprintf("HTTP call returned %v", err))
+		return errors.New(fmt.Sprintf("HTTP call returned %v", resp.Status))
 
 	}
 
