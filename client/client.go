@@ -48,13 +48,13 @@ type GetZone struct {
 			Content  string `json:"content"`
 			Disabled bool   `json:"disabled"`
 		} `json:"records"`
-		TTL      int    `json:"ttl"`
-		Type     string `json:"type"`
+		TTL  int    `json:"ttl"`
+		Type string `json:"type"`
 	} `json:"rrsets"`
-	Serial         int    `json:"serial"`
-	SoaEdit        string `json:"soa_edit"`
-	SoaEditAPI     string `json:"soa_edit_api"`
-	URL            string `json:"url"`
+	Serial     int    `json:"serial"`
+	SoaEdit    string `json:"soa_edit"`
+	SoaEditAPI string `json:"soa_edit_api"`
+	URL        string `json:"url"`
 }
 
 type PowerClient struct {
