@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -31,17 +32,65 @@ type CreateRecord struct {
 	Rrsets []RecordSet `json:"rrsets"`
 }
 
-type pdnsclient struct {
+type GetZone struct {
+	Account        string        `json:"account"`
+	Dnssec         bool          `json:"dnssec"`
+	ID             string        `json:"id"`
+	Kind           string        `json:"kind"`
+	LastCheck      int           `json:"last_check"`
+	Masters        []interface{} `json:"masters"`
+	Name           string        `json:"name"`
+	NotifiedSerial int           `json:"notified_serial"`
+	Rrsets         []struct {
+		Comments []interface{} `json:"comments"`
+		Name     string        `json:"name"`
+		Records  []struct {
+			Content  string `json:"content"`
+			Disabled bool   `json:"disabled"`
+		} `json:"records"`
+		TTL      int    `json:"ttl"`
+		Type     string `json:"type"`
+	} `json:"rrsets"`
+	Serial         int    `json:"serial"`
+	SoaEdit        string `json:"soa_edit"`
+	SoaEditAPI     string `json:"soa_edit_api"`
+	URL            string `json:"url"`
+}
+
+type PowerClient struct {
 	// baseURL is the url for the powerdns host like http://localhost:8081
 	baseURL string
 	apiKey  string
 }
 
-func NewClient(baseURL string, apiKey string) *pdnsclient {
-	return &pdnsclient{apiKey: apiKey, baseURL: baseURL}
+func NewClient(baseURL string, apiKey string) *PowerClient {
+	return &PowerClient{apiKey: apiKey, baseURL: baseURL}
 }
 
-func (c *pdnsclient) AddZone(name string, nameServers []string) error {
+func (c *PowerClient) GetZone(name string) (*GetZone, error) {
+	url := c.baseURL + "/api/v1/servers/localhost/zones" + "/" + name
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Add("X-API-Key", c.apiKey)
+	client := http.DefaultClient
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error calling PowerDNS resource %v", err))
+	}
+	if resp.StatusCode != 200 {
+		return nil, errors.New(fmt.Sprintf("Error calling PowerDNS %v got statuscode '%v' with error %v", url, resp.StatusCode, err))
+	}
+	jd := json.NewDecoder(resp.Body)
+	zonedata := &GetZone{}
+	err = jd.Decode(zonedata)
+
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Error decoding JSON from PowerDNS resource %v", err))
+	}
+	return zonedata, nil
+}
+
+func (c *PowerClient) AddZone(name string, nameServers []string) error {
 	cl := CreateZone{
 		Name:        name,
 		Kind:        "Native",
@@ -50,14 +99,11 @@ func (c *pdnsclient) AddZone(name string, nameServers []string) error {
 	}
 	b, err := json.Marshal(cl)
 	if err != nil {
-		log.Println(err)
 		return errors.New("failure parsing zone struct to json")
 	}
-
 	url := c.baseURL + "/api/v1/servers/localhost/zones"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
 	if err != nil {
-		log.Fatal(err)
 		return err
 	}
 	req.Header.Add("X-API-Key", c.apiKey)
@@ -65,19 +111,23 @@ func (c *pdnsclient) AddZone(name string, nameServers []string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New(fmt.Sprintf("HTTP call returned %v", resp.Status))
+		status := ""
+		if resp != nil {
+			status = resp.Status
+		}
+		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v", req.Method, url, status))
 
 	}
-
 	if resp.StatusCode != 201 {
-		return errors.New(fmt.Sprintf("HTTP call returned %v", resp.StatusCode))
+		rb, _ := ioutil.ReadAll(resp.Body)
+		return errors.New(fmt.Sprintf("HTTP call returned %v with %v\n\t%v", resp.StatusCode, resp.Status, string(rb)))
 
 	}
 	return nil
 
 }
 
-func (c *pdnsclient) AddRecord(name, dnstype, content string, ttl int, zone string) error {
+func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone string) error {
 
 	p := CreateRecord{
 		Rrsets: []RecordSet{
@@ -112,8 +162,10 @@ func (c *pdnsclient) AddRecord(name, dnstype, content string, ttl int, zone stri
 
 	}
 
-	if resp.StatusCode != 204 && resp.StatusCode != 200 { // 204 No content = create, 200 = not updated but otherwise ok
-		return errors.New(fmt.Sprintf("HTTP call returned %v", resp.StatusCode))
+	if resp.StatusCode != 204 && resp.StatusCode != 200 {
+		// 204 No content = create, 200 = not updated but otherwise ok
+		body, _ := ioutil.ReadAll(resp.Body)
+		return errors.New(fmt.Sprintf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)))
 
 	}
 	return nil
