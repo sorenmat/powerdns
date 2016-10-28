@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
+	"strconv"
 )
 
 type CreateZone struct {
@@ -25,6 +27,8 @@ type RecordSet struct {
 	Records    []Record `json:"records"`
 }
 type Record struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
 	Content  string `json:"content"`
 	Disabled bool   `json:"disabled"`
 }
@@ -48,13 +52,13 @@ type GetZone struct {
 			Content  string `json:"content"`
 			Disabled bool   `json:"disabled"`
 		} `json:"records"`
-		TTL  int    `json:"ttl"`
-		Type string `json:"type"`
+		TTL      int    `json:"ttl"`
+		Type     string `json:"type"`
 	} `json:"rrsets"`
-	Serial     int    `json:"serial"`
-	SoaEdit    string `json:"soa_edit"`
-	SoaEditAPI string `json:"soa_edit_api"`
-	URL        string `json:"url"`
+	Serial         int    `json:"serial"`
+	SoaEdit        string `json:"soa_edit"`
+	SoaEditAPI     string `json:"soa_edit_api"`
+	URL            string `json:"url"`
 }
 
 type PowerClient struct {
@@ -127,13 +131,34 @@ func (c *PowerClient) AddZone(name string, nameServers []string) error {
 
 }
 
+func (c *PowerClient) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) error {
+	/*
+	The SOA record includes the following details:
+
+	* The primary name server for the domain, which is ns1.example.com or the first name server in the vanity name server list for vanity name servers.
+	* The responsible party for the domain, which is admin.example.com = admin@example.com.
+	* A timestamp that changes when you update your domain name.
+	* The number of seconds before the zone should be refreshed.
+	* The number of seconds before a failed refresh should be retried.
+	* The limit in seconds before a zone is considered no longer authoritative.
+	* The negative result TTL.
+*/
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	content := fmt.Sprintf("%v %v %v %v %v %v %v", primaryDNS, admin, timestamp, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL)
+	return c.AddRecord(name, "SOA", content, 30, zone)
+}
 func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone string) error {
 
 	p := CreateRecord{
 		Rrsets: []RecordSet{
-			RecordSet{Name: name, Type: dnstype, TTL: ttl, Changetype: "REPLACE",
+			{
+				Name: name,
+				Type: dnstype,
+				TTL: ttl,
+				Changetype: "REPLACE",
 				Records: []Record{
-					Record{
+					{
+						Name: name,
 						Content:  content,
 						Disabled: false,
 					},
@@ -148,6 +173,7 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 	}
 
 	url := c.baseURL + "/api/v1/servers/localhost/zones/" + zone
+
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(b))
 	if err != nil {
 		log.Fatal("Error creating request", err)
@@ -158,7 +184,8 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New(fmt.Sprintf("HTTP call returned %v", err))
+		body, _ := ioutil.ReadAll(resp.Body)
+		return errors.New(fmt.Sprintf("HTTP call returned %v with content %v", err, string(body)))
 
 	}
 
