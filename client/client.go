@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 	"strconv"
+	"strings"
 )
 
 type CreateZone struct {
@@ -63,16 +64,17 @@ type GetZone struct {
 
 type PowerClient struct {
 	// baseURL is the url for the powerdns host like http://localhost:8081
-	baseURL string
-	apiKey  string
+	baseURL  string
+	apiKey   string
+	ServerID string
 }
 
-func NewClient(baseURL string, apiKey string) *PowerClient {
-	return &PowerClient{apiKey: apiKey, baseURL: baseURL}
+func NewClient(baseURL string, apiKey string, serverID string) *PowerClient {
+	return &PowerClient{apiKey: apiKey, baseURL: baseURL, ServerID: serverID}
 }
 
 func (c *PowerClient) GetZone(name string) (*GetZone, error) {
-	url := c.baseURL + "/api/v1/servers/localhost/zones" + "/" + name
+	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones" + "/" + name
 	req, err := http.NewRequest("GET", url, nil)
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
@@ -105,7 +107,7 @@ func (c *PowerClient) AddZone(name string, nameServers []string) error {
 	if err != nil {
 		return errors.New("failure parsing zone struct to json")
 	}
-	url := c.baseURL + "/api/v1/servers/localhost/zones"
+	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
 	if err != nil {
 		return err
@@ -119,7 +121,7 @@ func (c *PowerClient) AddZone(name string, nameServers []string) error {
 		if resp != nil {
 			status = resp.Status
 		}
-		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v", req.Method, url, status))
+		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v %v", req.Method, url, status, err))
 
 	}
 	if resp.StatusCode != 201 {
@@ -147,6 +149,37 @@ func (c *PowerClient) AddSOARecord(name, primaryDNS, admin string, refreshSecond
 	content := fmt.Sprintf("%v %v %v %v %v %v %v", primaryDNS, admin, timestamp, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL)
 	return c.AddRecord(name, "SOA", content, 30, zone)
 }
+
+func (c *PowerClient) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) error {
+
+	/*
+	A SRV record has the form:
+
+	_service._proto.name. TTL class SRV priority weight port target.
+
+	    service: the symbolic name of the desired service.
+	    proto: the transport protocol of the desired service; this is usually either TCP or UDP.
+	    name: the domain name for which this record is valid, ending in a dot.
+	    TTL: standard DNS time to live field.
+	    class: standard DNS class field (this is always IN).
+	    priority: the priority of the target host, lower value means more preferred.
+	    weight: A relative weight for records with the same priority, higher value means more preferred.
+	    port: the TCP or UDP port on which the service is to be found.
+	    target: the canonical hostname of the machine providing the service, ending in a dot.
+
+	An example SRV record in textual form that might be found in a zone file might be the following:
+
+	_sip._tcp.example.com. 86400 IN SRV 0 5 5060 sipserver.example.com.
+	From: https://en.wikipedia.org/wiki/SRV_record
+	 */
+
+	if !strings.HasSuffix(name, ".") {
+		name = name + "."
+	}
+	content := fmt.Sprintf("_%v._%v.%v %v IN %v %v", service, proto, name, ttl, weight, port, target)
+	return c.AddRecord(name, "SRV", content, ttl, zone)
+}
+
 func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone string) error {
 
 	p := CreateRecord{
@@ -172,7 +205,7 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 		return errors.New("failure parsing record struct to json")
 	}
 
-	url := c.baseURL + "/api/v1/servers/localhost/zones/" + zone
+	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones/" + zone
 
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(b))
 	if err != nil {
@@ -184,7 +217,10 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		body, _ := ioutil.ReadAll(resp.Body)
+		var body []byte
+		if resp != nil {
+			body, _ = ioutil.ReadAll(resp.Body)
+		}
 		return errors.New(fmt.Sprintf("HTTP call returned %v with content %v", err, string(body)))
 
 	}
@@ -196,5 +232,4 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 
 	}
 	return nil
-
 }
