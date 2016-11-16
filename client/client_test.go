@@ -23,7 +23,7 @@ func TestCreateZoneBody(t *testing.T) {
 		w.WriteHeader(201)
 	}))
 	defer ts.Close()
-	c := NewClient(ts.URL, "changeme")
+	c := NewClient(ts.URL, "changeme", "localhost")
 	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)
@@ -39,7 +39,7 @@ func TestCreateZoneHeader(t *testing.T) {
 		w.WriteHeader(201)
 	}))
 	defer ts.Close()
-	c := NewClient(ts.URL, "changeme")
+	c := NewClient(ts.URL, "changeme", "localhost")
 	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)
@@ -56,7 +56,7 @@ func TestEnsureCorrectCreateZoneURL(t *testing.T) {
 		w.WriteHeader(201)
 	}))
 	defer ts.Close()
-	c := NewClient(ts.URL, "changeme")
+	c := NewClient(ts.URL, "changeme", "localhost")
 	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)

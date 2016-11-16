@@ -62,18 +62,20 @@ type GetZone struct {
 	URL            string `json:"url"`
 }
 
-type PowerClient struct {
+
+type PowerClientStruct struct {
+	PowerClient
 	// baseURL is the url for the powerdns host like http://localhost:8081
 	baseURL  string
 	apiKey   string
 	ServerID string
 }
 
-func NewClient(baseURL string, apiKey string, serverID string) *PowerClient {
-	return &PowerClient{apiKey: apiKey, baseURL: baseURL, ServerID: serverID}
+func NewClient(baseURL string, apiKey string, serverID string) *PowerClientStruct {
+	return &PowerClientStruct{apiKey: apiKey, baseURL: baseURL, ServerID: serverID}
 }
 
-func (c *PowerClient) GetZone(name string) (*GetZone, error) {
+func (c *PowerClientStruct) GetZone(name string) (*GetZone, error) {
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones" + "/" + name
 	req, err := http.NewRequest("GET", url, nil)
 	req.Header.Add("X-API-Key", c.apiKey)
@@ -96,7 +98,7 @@ func (c *PowerClient) GetZone(name string) (*GetZone, error) {
 	return zonedata, nil
 }
 
-func (c *PowerClient) AddZone(name string, nameServers []string) error {
+func (c *PowerClientStruct) AddZone(name string, nameServers []string) error {
 	cl := CreateZone{
 		Name:        name,
 		Kind:        "Native",
@@ -133,7 +135,7 @@ func (c *PowerClient) AddZone(name string, nameServers []string) error {
 
 }
 
-func (c *PowerClient) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) error {
+func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) error {
 	/*
 	The SOA record includes the following details:
 
@@ -150,7 +152,7 @@ func (c *PowerClient) AddSOARecord(name, primaryDNS, admin string, refreshSecond
 	return c.AddRecord(name, "SOA", content, 30, zone)
 }
 
-func (c *PowerClient) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) error {
+func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) error {
 
 	/*
 	A SRV record has the form:
@@ -176,11 +178,16 @@ func (c *PowerClient) AddSRVRecord(service, proto, name string, ttl int, priorit
 	if !strings.HasSuffix(name, ".") {
 		name = name + "."
 	}
-	content := fmt.Sprintf("_%v._%v.%v %v IN %v %v", service, proto, name, ttl, weight, port, target)
+	if !strings.HasSuffix(target, ".") {
+		target = target + "."
+	}
+	
+	// priority weight port target
+	content := fmt.Sprintf("%v %v %v %v", priority, weight, port, target)
 	return c.AddRecord(name, "SRV", content, ttl, zone)
 }
 
-func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone string) error {
+func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) error {
 
 	p := CreateRecord{
 		Rrsets: []RecordSet{
@@ -204,7 +211,6 @@ func (c *PowerClient) AddRecord(name, dnstype, content string, ttl int, zone str
 		log.Println(err)
 		return errors.New("failure parsing record struct to json")
 	}
-
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones/" + zone
 
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(b))
