@@ -181,10 +181,10 @@ func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, p
 	if !strings.HasSuffix(target, ".") {
 		target = target + "."
 	}
-	
+	nameentry := fmt.Sprintf("_%v._%v.%v", service, proto, name)
 	// priority weight port target
 	content := fmt.Sprintf("%v %v %v %v", priority, weight, port, target)
-	return c.AddRecord(name, "SRV", content, ttl, zone)
+	return c.AddRecord(nameentry, "SRV", content, ttl, zone)
 }
 
 func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) error {
