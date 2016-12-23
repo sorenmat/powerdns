@@ -98,7 +98,7 @@ func (c *PowerClientStruct) GetZone(name string) (*GetZone, error) {
 	return zonedata, nil
 }
 
-func (c *PowerClientStruct) AddZone(name string, nameServers []string) error {
+func (c *PowerClientStruct) AddZone(name string, nameServers []string) (error, int) {
 	cl := CreateZone{
 		Name:        name,
 		Kind:        "Native",
@@ -107,12 +107,12 @@ func (c *PowerClientStruct) AddZone(name string, nameServers []string) error {
 	}
 	b, err := json.Marshal(cl)
 	if err != nil {
-		return errors.New("failure parsing zone struct to json")
+		return errors.New("failure parsing zone struct to json"), 0
 	}
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
 	if err != nil {
-		return err
+		return err, 0
 	}
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
@@ -120,22 +120,24 @@ func (c *PowerClientStruct) AddZone(name string, nameServers []string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		status := ""
+		statusCode := 0
 		if resp != nil {
 			status = resp.Status
+			statusCode = resp.StatusCode
 		}
-		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v %v", req.Method, url, status, err))
+		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v %v", req.Method, url, status, err)), statusCode
 
 	}
 	if resp.StatusCode != 201 {
 		rb, _ := ioutil.ReadAll(resp.Body)
-		return errors.New(fmt.Sprintf("HTTP call returned %v with %v\n\t%v", resp.StatusCode, resp.Status, string(rb)))
+		return errors.New(fmt.Sprintf("HTTP call returned %v with %v\n\t%v", resp.StatusCode, resp.Status, string(rb))), resp.StatusCode
 
 	}
-	return nil
+	return nil, 0
 
 }
 
-func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) error {
+func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) (error, int) {
 	/*
 	The SOA record includes the following details:
 
@@ -152,7 +154,7 @@ func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refresh
 	return c.AddRecord(name, "SOA", content, 30, zone)
 }
 
-func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) error {
+func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) (error, int) {
 
 	/*
 	A SRV record has the form:
@@ -187,7 +189,7 @@ func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, p
 	return c.AddRecord(nameentry, "SRV", content, ttl, zone)
 }
 
-func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) error {
+func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) (error, int) {
 
 	p := CreateRecord{
 		Rrsets: []RecordSet{
@@ -209,14 +211,14 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 	b, err := json.Marshal(p)
 	if err != nil {
 		log.Println(err)
-		return errors.New("failure parsing record struct to json")
+		return errors.New("failure parsing record struct to json"), 0
 	}
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones/" + zone
 
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(b))
 	if err != nil {
 		log.Fatal("Error creating request", err)
-		return err
+		return err, 0
 	}
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
@@ -227,15 +229,15 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 		if resp != nil {
 			body, _ = ioutil.ReadAll(resp.Body)
 		}
-		return errors.New(fmt.Sprintf("HTTP call returned %v with content %v", err, string(body)))
+		return fmt.Errorf("HTTP call returned %v with content %v", err, string(body)), resp.StatusCode
 
 	}
 
 	if resp.StatusCode != 204 && resp.StatusCode != 200 {
 		// 204 No content = create, 200 = not updated but otherwise ok
 		body, _ := ioutil.ReadAll(resp.Body)
-		return errors.New(fmt.Sprintf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)))
+		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)), resp.StatusCode
 
 	}
-	return nil
+	return nil, resp.StatusCode
 }
