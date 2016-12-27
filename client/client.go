@@ -8,9 +8,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"time"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type CreateZone struct {
@@ -53,15 +53,14 @@ type GetZone struct {
 			Content  string `json:"content"`
 			Disabled bool   `json:"disabled"`
 		} `json:"records"`
-		TTL      int    `json:"ttl"`
-		Type     string `json:"type"`
+		TTL  int    `json:"ttl"`
+		Type string `json:"type"`
 	} `json:"rrsets"`
-	Serial         int    `json:"serial"`
-	SoaEdit        string `json:"soa_edit"`
-	SoaEditAPI     string `json:"soa_edit_api"`
-	URL            string `json:"url"`
+	Serial     int    `json:"serial"`
+	SoaEdit    string `json:"soa_edit"`
+	SoaEditAPI string `json:"soa_edit_api"`
+	URL        string `json:"url"`
 }
-
 
 type PowerClientStruct struct {
 	PowerClient
@@ -98,7 +97,7 @@ func (c *PowerClientStruct) GetZone(name string) (*GetZone, error) {
 	return zonedata, nil
 }
 
-func (c *PowerClientStruct) AddZone(name string, nameServers []string) (error, int) {
+func (c *PowerClientStruct) AddZone(name string, nameServers []string) (int, error) {
 	cl := CreateZone{
 		Name:        name,
 		Kind:        "Native",
@@ -107,12 +106,13 @@ func (c *PowerClientStruct) AddZone(name string, nameServers []string) (error, i
 	}
 	b, err := json.Marshal(cl)
 	if err != nil {
-		return errors.New("failure parsing zone struct to json"), 0
+		return 0, errors.New("failure parsing zone struct to json")
 	}
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
 	if err != nil {
-		return err, 0
+		log.Println("unable to call PowerDNS API")
+		return 0, err
 	}
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
@@ -125,7 +125,7 @@ func (c *PowerClientStruct) AddZone(name string, nameServers []string) (error, i
 			status = resp.Status
 			statusCode = resp.StatusCode
 		}
-		return errors.New(fmt.Sprintf("HTTP call to %v '%v' returned %v %v", req.Method, url, status, err)), statusCode
+		return statusCode, fmt.Errorf("HTTP call to %v '%v' returned %v %v", req.Method, url, status, err)
 
 	}
 	// We needs this check because the PowerDNS API is stupid
@@ -140,57 +140,57 @@ func (c *PowerClientStruct) AddZone(name string, nameServers []string) (error, i
 			log.Fatalf("Unable to parse error from PowerDNS Response was '%v'", rb)
 		}
 		if strings.Contains(e.Error, "already exists") {
-			return fmt.Errorf("%v", err), 409
+			return 409, fmt.Errorf("%v", err)
 		}
 	}
 	if resp.StatusCode != 201 {
 		rb, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP call returned %v with %v\n\t%v", resp.StatusCode, resp.Status, string(rb)), resp.StatusCode
+		return resp.StatusCode, fmt.Errorf("HTTP call returned %v with %v\n\t%v", resp.StatusCode, resp.Status, string(rb))
 
 	}
-	return nil, 0
+	return resp.StatusCode, nil
 
 }
 
-func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) (error, int) {
+func (c *PowerClientStruct) AddSOARecord(name, primaryDNS, admin string, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL int, zone string) (int, error) {
 	/*
-	The SOA record includes the following details:
+		The SOA record includes the following details:
 
-	* The primary name server for the domain, which is ns1.example.com or the first name server in the vanity name server list for vanity name servers.
-	* The responsible party for the domain, which is admin.example.com = admin@example.com.
-	* A timestamp that changes when you update your domain name.
-	* The number of seconds before the zone should be refreshed.
-	* The number of seconds before a failed refresh should be retried.
-	* The limit in seconds before a zone is considered no longer authoritative.
-	* The negative result TTL.
-*/
+		* The primary name server for the domain, which is ns1.example.com or the first name server in the vanity name server list for vanity name servers.
+		* The responsible party for the domain, which is admin.example.com = admin@example.com.
+		* A timestamp that changes when you update your domain name.
+		* The number of seconds before the zone should be refreshed.
+		* The number of seconds before a failed refresh should be retried.
+		* The limit in seconds before a zone is considered no longer authoritative.
+		* The negative result TTL.
+	*/
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	content := fmt.Sprintf("%v %v %v %v %v %v %v", primaryDNS, admin, timestamp, refreshSeconds, failedRefresh, authoritativeTimeout, negativeTTL)
 	return c.AddRecord(name, "SOA", content, 30, zone)
 }
 
-func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) (error, int) {
+func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, priority int, weight int, port, target, zone string) (int, error) {
 
 	/*
-	A SRV record has the form:
+		A SRV record has the form:
 
-	_service._proto.name. TTL class SRV priority weight port target.
+		_service._proto.name. TTL class SRV priority weight port target.
 
-	    service: the symbolic name of the desired service.
-	    proto: the transport protocol of the desired service; this is usually either TCP or UDP.
-	    name: the domain name for which this record is valid, ending in a dot.
-	    TTL: standard DNS time to live field.
-	    class: standard DNS class field (this is always IN).
-	    priority: the priority of the target host, lower value means more preferred.
-	    weight: A relative weight for records with the same priority, higher value means more preferred.
-	    port: the TCP or UDP port on which the service is to be found.
-	    target: the canonical hostname of the machine providing the service, ending in a dot.
+		    service: the symbolic name of the desired service.
+		    proto: the transport protocol of the desired service; this is usually either TCP or UDP.
+		    name: the domain name for which this record is valid, ending in a dot.
+		    TTL: standard DNS time to live field.
+		    class: standard DNS class field (this is always IN).
+		    priority: the priority of the target host, lower value means more preferred.
+		    weight: A relative weight for records with the same priority, higher value means more preferred.
+		    port: the TCP or UDP port on which the service is to be found.
+		    target: the canonical hostname of the machine providing the service, ending in a dot.
 
-	An example SRV record in textual form that might be found in a zone file might be the following:
+		An example SRV record in textual form that might be found in a zone file might be the following:
 
-	_sip._tcp.example.com. 86400 IN SRV 0 5 5060 sipserver.example.com.
-	From: https://en.wikipedia.org/wiki/SRV_record
-	 */
+		_sip._tcp.example.com. 86400 IN SRV 0 5 5060 sipserver.example.com.
+		From: https://en.wikipedia.org/wiki/SRV_record
+	*/
 
 	if !strings.HasSuffix(name, ".") {
 		name = name + "."
@@ -204,18 +204,18 @@ func (c *PowerClientStruct) AddSRVRecord(service, proto, name string, ttl int, p
 	return c.AddRecord(nameentry, "SRV", content, ttl, zone)
 }
 
-func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) (error, int) {
+func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zone string) (int, error) {
 
 	p := CreateRecord{
 		Rrsets: []RecordSet{
 			{
-				Name: name,
-				Type: dnstype,
-				TTL: ttl,
+				Name:       name,
+				Type:       dnstype,
+				TTL:        ttl,
 				Changetype: "REPLACE",
 				Records: []Record{
 					{
-						Name: name,
+						Name:     name,
 						Content:  content,
 						Disabled: false,
 					},
@@ -226,14 +226,14 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 	b, err := json.Marshal(p)
 	if err != nil {
 		log.Println(err)
-		return errors.New("failure parsing record struct to json"), 0
+		return 0, errors.New("failure parsing record struct to json")
 	}
 	url := c.baseURL + "/api/v1/servers/" + c.ServerID + "/zones/" + zone
 
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(b))
 	if err != nil {
 		log.Fatal("Error creating request", err)
-		return err, 0
+		return 0, err
 	}
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
@@ -247,7 +247,7 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 			statusCode = resp.StatusCode
 		}
 		log.Println("PowerDNS Client: %v", err)
-		return fmt.Errorf("HTTP call returned %v with content %v", err, string(body)), statusCode
+		return statusCode, fmt.Errorf("HTTP call returned %v with content %v", err, string(body))
 	}
 	statusCode = resp.StatusCode
 	// We needs this check because the PowerDNS API is stupid
@@ -262,15 +262,15 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 			log.Fatalf("Unable to parse error from PowerDNS Response was '%v'", rb)
 		}
 		if strings.Contains(e.Error, "already exists") {
-			return fmt.Errorf("%v", err), 409
+			return 409, fmt.Errorf("%v", err)
 		}
 	}
 
 	if statusCode != 204 && statusCode != 200 {
 		// 204 No content = create, 200 = not updated but otherwise ok
 		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", statusCode, string(body)), statusCode
+		return statusCode, fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", statusCode, string(body))
 
 	}
-	return nil, statusCode
+	return statusCode, nil
 }

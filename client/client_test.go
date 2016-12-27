@@ -24,9 +24,12 @@ func TestCreateZoneBody(t *testing.T) {
 	}))
 	defer ts.Close()
 	c := NewClient(ts.URL, "changeme", "localhost")
-	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
+	code, err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)
+	}
+	if code != 201 {
+		t.Error()
 	}
 
 }
@@ -40,9 +43,12 @@ func TestCreateZoneHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 	c := NewClient(ts.URL, "changeme", "localhost")
-	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
+	code, err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)
+	}
+	if code != 201 {
+		t.Error()
 	}
 
 }
@@ -57,9 +63,12 @@ func TestEnsureCorrectCreateZoneURL(t *testing.T) {
 	}))
 	defer ts.Close()
 	c := NewClient(ts.URL, "changeme", "localhost")
-	err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
+	code, err := c.AddZone("example.org.", []string{"ns1.example.org", "ns2.example.org"})
 	if err != nil {
 		t.Error(err)
+	}
+	if code != 201 {
+		t.Error("Code should be 201, was", code)
 	}
 
 }
