@@ -223,21 +223,23 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 	req.Header.Add("X-API-Key", c.apiKey)
 	client := http.DefaultClient
 
+	statusCode := 0
 	resp, err := client.Do(req)
 	if err != nil {
 		var body []byte
 		if resp != nil {
 			body, _ = ioutil.ReadAll(resp.Body)
+			statusCode = resp.StatusCode
 		}
-		return fmt.Errorf("HTTP call returned %v with content %v", err, string(body)), resp.StatusCode
 
+		return fmt.Errorf("HTTP call returned %v with content %v", err, string(body)), statusCode
 	}
 
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
+	if statusCode != 204 && statusCode != 200 {
 		// 204 No content = create, 200 = not updated but otherwise ok
 		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)), resp.StatusCode
+		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)), statusCode
 
 	}
-	return nil, resp.StatusCode
+	return nil, statusCode
 }
