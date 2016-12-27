@@ -246,9 +246,10 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 			body, _ = ioutil.ReadAll(resp.Body)
 			statusCode = resp.StatusCode
 		}
-
+		log.Println("PowerDNS Client: %v", err)
 		return fmt.Errorf("HTTP call returned %v with content %v", err, string(body)), statusCode
 	}
+	statusCode = resp.StatusCode
 	// We needs this check because the PowerDNS API is stupid
 	if statusCode == 422 {
 		rb, _ := ioutil.ReadAll(resp.Body)
@@ -268,7 +269,7 @@ func (c *PowerClientStruct) AddRecord(name, dnstype, content string, ttl int, zo
 	if statusCode != 204 && statusCode != 200 {
 		// 204 No content = create, 200 = not updated but otherwise ok
 		body, _ := ioutil.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", resp.StatusCode, string(body)), statusCode
+		return fmt.Errorf("HTTP call returned %v\nPowerDNS response: %v", statusCode, string(body)), statusCode
 
 	}
 	return nil, statusCode
